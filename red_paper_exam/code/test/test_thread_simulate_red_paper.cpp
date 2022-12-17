@@ -22,7 +22,7 @@ private:
 public:
   double sum = 0;
   RedPaper(double money, int num): money(money), num(num) {}
-  void grab()
+  void grab(unsigned long start)
   {
     std::unique_lock<std::mutex> lock(m_mutex);
     if(num == 0) return;
@@ -30,7 +30,8 @@ public:
     double grab_money = std::calculate_one_paper_by_double_mean(money, num + 1);
     money -= grab_money;
     sum += grab_money;
-    printf("player[%02d]抢到了[%.2lf]元!!!!!\n", num, grab_money);
+    lock.unlock();
+    printf("player[%02d]抢到了[%.2lf]元!!!!!, 耗时%ldms\n", num, grab_money, timestamp() - start);
   }
 };
 
@@ -41,15 +42,14 @@ void send_and_grab_red_paper_in_single_thread(double money, int num)
   std::vector<std::thread> vec;
   for(int i = 1000; i > 0; i--)
   {
-    std::thread t(&RedPaper::grab, &rp);
+    std::thread t(&RedPaper::grab, &rp, timestamp());
     vec.push_back(std::move(t));
   }
+  printf("循环耗时: %ldms\n", timestamp() - start_time);
   for(auto &t: vec)
     t.join();
   printf("sum: %.2lf\n", rp.sum);
-  // 假装很激烈
-  // std::this_thread::sleep_for(std::chrono::milliseconds(500));
-  printf("耗时: %ldmm\n", timestamp() - start_time);
+  printf("总耗时: %ldms\n", timestamp() - start_time);
 }
 
 int main (int argc, char *argv[])

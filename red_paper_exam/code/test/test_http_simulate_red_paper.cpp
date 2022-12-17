@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
     process_cnt = atoi(argv[1]);
     client_handle_co_cnt= atoi(argv[2]);
 
-    fish::SetLogLevel(0);
+    fish::SetLogLevel(5);
 
     g_listen_sock = Socket::CreateTCP();
     assert(g_listen_sock);
@@ -52,7 +52,6 @@ int main(int argc, char** argv) {
 
             auto servlet_dispatch = http_server->GetServletDispatch();
             servlet_dispatch->SetServlet("/", [](HttpRequest::Ptr req, HttpResponse::Ptr rsp, HttpSession::Ptr session){
-                FISH_LOGDEBUG("mark /");
                 rsp->SetBody("Servlet path is \"/\"\n");
                 return 0;
             });
