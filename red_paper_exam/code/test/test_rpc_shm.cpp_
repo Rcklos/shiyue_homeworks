@@ -1,0 +1,78 @@
+#include "shadesmar.h"
+#include <cstdint>
+#include <cstring>
+#include <functional>
+#include <thread>
+#include <unistd.h>
+
+const std::string channel_name = "serve_on_separate_thread";
+class MServer {
+public:
+void free_cleanup(shm::memory::Memblock *resp)
+{
+  free(resp->ptr);
+  resp->ptr = nullptr;
+  resp->size = 0;
+}
+
+bool serve(const shm::memory::Memblock &req, shm::memory::Memblock *resp) {
+  resp->ptr = malloc(req.size);
+  resp->size = req.size;
+  uint32_t val;
+  std::memcpy(&val, req.ptr, req.size);
+  // printf("处理req: %d(%x), size: %ld\n", val, val, req.size);
+  val *= 2;
+  // printf("val = %d\n", val);
+  std::memcpy(resp->ptr, &val, req.size);
+  return true;
+}
+};
+
+
+void child(const uint32_t message, std::vector<uint32_t> &returns)
+{
+  shm::rpc::Client client(channel_name);
+  shm::memory::Memblock req, resp;
+  req.ptr = malloc(sizeof(uint32_t));
+  req.size = sizeof(uint32_t);
+  // std::memset(req.ptr, message, req.size);
+  std::memcpy(req.ptr, &message, req.size);
+  printf("提交req: %d\n", message);
+  auto rs = client.call(req, &resp);
+  // if(rs) printf("call 成功\n");
+  // else printf("call 失败\n");
+  uint32_t val;
+  std::memcpy(&val, resp.ptr, resp.size);
+  printf("响应req: %d(%x)\n", val, val);
+  returns.push_back(val);
+  client.free_resp(&resp);
+}
+
+int main ()
+{
+  std::vector<uint32_t> messages = {1, 2, 3, 4, 5};
+  std::vector<uint32_t> returns;
+  std::vector<uint32_t> expected = {2, 4, 6, 8, 10};
+
+  MServer s;
+  shm::rpc::Server server(
+      channel_name,
+      std::bind(&MServer::serve, s, std::placeholders::_1, std::placeholders::_2),
+      std::bind(&MServer::free_cleanup, s, std::placeholders::_1));
+  std::thread th([&]() { server.serve(); });
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  std::vector<std::thread> vec;
+  for (auto msg: messages) {
+    std::thread th(std::bind(child, msg, returns));
+    vec.push_back(std::move(th));
+  }
+  for(auto &th: vec)
+    th.join();
+  server.stop();
+  th.join();
+  for(auto i: returns) {
+    printf("%d(%08x) ", i, i);
+  }
+  std::cout << std::endl;
+  return 0;
+}

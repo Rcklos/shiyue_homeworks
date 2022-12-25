@@ -1,0 +1,77 @@
+#include "shadesmar.h"
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <ctime>
+#include <ostream>
+#include <sys/wait.h>
+#include <thread>
+#include <unistd.h>
+#include <vector>
+
+std::atomic<int> count = 0;
+bool callback(const shm::memory::Memblock &req, shm::memory::Memblock *resp)
+{
+  if(req.is_empty()) return false;
+  printf("处理来自: id[%d]的消息\n", *((uint32_t*)req.ptr));
+  resp->ptr = malloc(sizeof(uint32_t));
+  resp->size = sizeof(uint32_t);
+  *((pid_t *)resp->ptr) = *((uint32_t*)req.ptr);
+  printf("处理: pid[%d]的消息结果\n", *((uint32_t*)resp->ptr));
+  count++;
+  printf("count: %d\n", count.load());
+  return true;
+}
+
+void cleanup(shm::memory::Memblock *resp)
+{
+  free(resp->ptr);
+  resp->ptr = 0;
+  resp->size = 0;
+}
+
+void signal_handler(int sig)
+{
+  if(sig == SIGINT) {
+    std::cout << "\n正在退出程序..." << std::endl;
+    kill(0, SIGINT);
+    wait(nullptr);
+    std::cout << "\n程序已退出!!!" << std::endl;
+    exit(-1);
+  }
+}
+
+void child(uint32_t id)
+{
+  shm::rpc::Client client("test");
+  shm::memory::Memblock req;
+  shm::memory::Memblock resp;
+  req.ptr = malloc(sizeof(uint32_t));
+  req.size = sizeof(uint32_t);
+  *((uint32_t *)req.ptr) = id;
+  printf("pid[%d]: 提交一次\n", id);
+  client.call(req, &resp);
+  printf("RPC响应pid[%d]: %d\n", id, *static_cast<uint32_t*>(resp.ptr));
+  client.free_resp(&resp);
+  free(req.ptr);
+  req.size = 0;
+}
+
+int main (int argc, char *argv[])
+{
+  signal(SIGINT, signal_handler);
+  shm::rpc::Server server("test", callback, cleanup);
+  std::thread th([&]() { server.serve(); });
+  std::vector<std::thread> vec;
+  for(uint32_t i = 0; i < 5; i++) {
+    // vec.push_back(std::move(std::thread(child)));
+    child(i);
+  }
+  for(auto &t: vec)
+    t.join();
+  server.stop();
+  th.join();
+  return 0;
+}

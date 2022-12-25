@@ -1,0 +1,104 @@
+#include "shadesmar.h"
+#include <cstdint>
+#include <cstring>
+#include <functional>
+#include <unistd.h>
+#include <signal.h>
+#include <sys/wait.h>
+
+void signal_handler(int signal)
+{
+  if(signal == SIGINT)
+  {
+    kill(0, SIGINT);
+    wait(nullptr);
+    printf("\n程序正在退出...\n");
+    exit(-1);
+  }
+}
+
+const std::string channel_name = "serve_on_separate_thread";
+class MServer {
+private:
+  uint32_t *count = new uint32_t(0);
+public:
+void free_cleanup(shm::memory::Memblock *resp)
+{
+  free(resp->ptr);
+  resp->ptr = nullptr;
+  resp->size = 0;
+}
+
+bool serve(const shm::memory::Memblock &req, shm::memory::Memblock *resp) {
+  resp->ptr = malloc(req.size);
+  resp->size = req.size;
+  uint32_t val;
+  std::memcpy(&val, req.ptr, req.size);
+  // printf("处理req: %d(%x), size: %ld\n", val, val, req.size);
+  val *= 2;
+  *count += val;
+  printf("count = %d\n", *count);
+  std::memcpy(resp->ptr, count, req.size);
+  return true;
+}
+};
+
+
+void child(const uint32_t message, std::vector<uint32_t> &returns)
+{
+  shm::rpc::Client client(channel_name);
+  shm::memory::Memblock req, resp;
+  req.ptr = malloc(sizeof(uint32_t));
+  req.size = sizeof(uint32_t);
+  // std::memset(req.ptr, message, req.size);
+  std::memcpy(req.ptr, &message, req.size);
+  printf("提交req: %d\n", message);
+  auto rs = client.call(req, &resp);
+  // if(rs) printf("call 成功\n");
+  // else printf("call 失败\n");
+  uint32_t val;
+  std::memcpy(&val, resp.ptr, resp.size);
+  printf("响应req: %d(%x)\n", val, val);
+  returns.push_back(val);
+  client.free_resp(&resp);
+}
+
+int main ()
+{
+  signal(SIGINT, signal_handler);
+  std::vector<uint32_t> messages = {1, 2, 3, 4, 5};
+  std::vector<uint32_t> expected = {2, 6, 12, 20, 30};
+
+  if(!fork()) {
+    MServer s;
+    shm::rpc::Server server(
+        channel_name,
+        std::bind(&MServer::serve, s, std::placeholders::_1, std::placeholders::_2),
+        std::bind(&MServer::free_cleanup, s, std::placeholders::_1));
+    server.serve();
+    return 0;
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  for (auto message: messages) {
+    if(!fork()) {
+      shm::rpc::Client client(channel_name);
+      shm::memory::Memblock req, resp;
+      req.ptr = malloc(sizeof(uint32_t));
+      req.size = sizeof(uint32_t);
+      // std::memset(req.ptr, message, req.size);
+      std::memcpy(req.ptr, &message, req.size);
+      printf("提交req: %d\n", message);
+      auto rs = client.call(req, &resp);
+      // if(rs) printf("call 成功\n");
+      // else printf("call 失败\n");
+      uint32_t val;
+      std::memcpy(&val, resp.ptr, resp.size);
+      printf("响应req: %d(%x)\n", val, val);
+      client.free_resp(&resp);
+      return 0;
+    }
+  }
+  std::cout << std::endl;
+  while(true);
+  return 0;
+}

@@ -6,10 +6,17 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/../build/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/../build/lib)
-set(CMAKE_CXX_FLAGS "$ENV{CXXFLAAGS} -O3 -pthread -g -std=c++11 -Wall")
+set(CMAKE_CXX_FLAGS "$ENV{CXXFLAAGS} -O3 -pthread -g")
+
+add_definitions(-DMSGPACK_NO_BOOST)
 
 # 包含路径
-include_directories(${PROJECT_SOURCE_DIR})
+include_directories(
+  ${PROJECT_SOURCE_DIR}
+  ${PROJECT_SOURCE_DIR}/../thirdparty/rest_rpc/include
+  ${PROJECT_SOURCE_DIR}/../thirdparty/msgpack-c/include
+  ${PROJECT_SOURCE_DIR}/../thirdparty/asio
+)
 
 set(libfish cofish)
 
