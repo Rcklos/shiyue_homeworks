@@ -2,6 +2,6 @@
 
 mkdir -p build
 cd build
-cmake ../src && make -j4
+cmake ../src && make -j8
 echo "compile completed!!!"
 
