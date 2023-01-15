@@ -31,7 +31,7 @@ git status
 git config --global --list
 
 # 查看仓库
-git remote -l
+git remote -v
 
 # 查看分支
 git branch -l
